@@ -32,6 +32,8 @@ public class CameraController : MonoBehaviour
     // LateUpdate se izvršava nakon svih Update poziva - kamera prati karakter bez trzanja
     private void LateUpdate()
     {
+        if (Time.timeScale == 0f) return;
+
         rotX += Input.GetAxis("Mouse X") * sensitivity;
         rotY -= Input.GetAxis("Mouse Y") * sensitivity;
         rotY  = Mathf.Clamp(rotY, minVerticalAngle, maxVerticalAngle);
