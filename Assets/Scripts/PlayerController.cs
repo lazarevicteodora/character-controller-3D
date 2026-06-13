@@ -21,6 +21,11 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float standHeight = 2f;
     [SerializeField] private float standCenter = 1f;
 
+    [Header("Roll")]
+    [SerializeField] private float rollSpeed = 6f;
+    [SerializeField] private float rollDuration = 0.6f;
+    [SerializeField] private float rollCooldown = 1.5f;
+
     [Header("Stumble / Fall")]
     [SerializeField] private float stumbleThreshold = 3f;
     [SerializeField] private float autoRecoveryTime = 2.5f;
@@ -45,6 +50,14 @@ public class PlayerController : MonoBehaviour
     private float speedMultiplier = 1f;
     private float modifierTimer;
 
+    private bool isRolling;
+    private float rollTimer;
+    private float rollCooldownTimer;
+    private Vector3 rollDirection;
+    private Quaternion rollRotation;
+
+    private float jumpCooldownTimer;
+
     // Hashes su efikasniji od string lookupa u Animatoru
     private static readonly int HashSpeed    = Animator.StringToHash("Speed");
     private static readonly int HashGrounded = Animator.StringToHash("IsGrounded");
@@ -53,6 +66,7 @@ public class PlayerController : MonoBehaviour
     private static readonly int HashStumble  = Animator.StringToHash("Stumble");
     private static readonly int HashFallDown = Animator.StringToHash("FallDown");
     private static readonly int HashGetUp    = Animator.StringToHash("GetUp");
+    private static readonly int HashRoll     = Animator.StringToHash("Roll");
 
     public float CurrentSpeed    { get; private set; }
     public float SpeedMultiplier => speedMultiplier;
@@ -81,9 +95,26 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
+        if (isRolling)
+        {
+            rollTimer -= Time.deltaTime;
+            if (rollTimer <= 0f)
+            {
+                isRolling = false;
+                // Vraćamo collider na normalnu visinu kada se kolut završi
+                col.height = standHeight;
+                col.center = new Vector3(0f, standCenter, 0f);
+            }
+            return;
+        }
+
+        if (rollCooldownTimer > 0f)
+            rollCooldownTimer -= Time.deltaTime;
+
         GatherInput();
         HandleCrouch();
         HandleJump();
+        HandleRoll();
         TickModifier();
         HandleFootstepAudio();
         UpdateAnimator();
@@ -92,12 +123,29 @@ public class PlayerController : MonoBehaviour
     private void FixedUpdate()
     {
         if (isRecovering) return;
+
+        if (isRolling)
+        {
+            rb.velocity = new Vector3(rollDirection.x * rollSpeed, rb.velocity.y, rollDirection.z * rollSpeed);
+            // Zaključavamo rotaciju na vrednost kada je kolut počeo - sprečava kružno kretanje
+            rb.rotation = rollRotation;
+            rb.angularVelocity = Vector3.zero;
+            return;
+        }
+
         ApplyMovement();
     }
 
     private void CheckGround()
     {
-        isGrounded = Physics.CheckSphere(groundCheck.position, groundCheckRadius, groundLayer);
+        if (jumpCooldownTimer > 0f)
+        {
+            jumpCooldownTimer -= Time.deltaTime;
+            isGrounded = false;
+            return;
+        }
+        // Raycast pravo nadole je precizniji od CheckSphere - ne hvata zidove sa strane
+        isGrounded = Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, 0.25f, groundLayer);
     }
 
     private void GatherInput()
@@ -135,16 +183,38 @@ public class PlayerController : MonoBehaviour
 
     private void HandleJump()
     {
-        if (Input.GetButtonDown("Jump") && isGrounded && !isCrouching)
+        if (Input.GetButtonDown("Jump") && isGrounded && !isCrouching && rb.velocity.y <= 0.05f)
         {
-            // Resetujemo Y brzinu pre impulsa da skok uvek ima konzistentnu visinu
             rb.velocity = new Vector3(rb.velocity.x, 0f, rb.velocity.z);
             rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+            isGrounded = false;
+            jumpCooldownTimer = 0.4f;
             animator.SetTrigger(HashJump);
 
             if (jumpSounds != null && jumpSounds.Length > 0 && SoundManager.instance != null)
                 SoundManager.instance.PlaySoundFX(jumpSounds, 1f);
         }
+    }
+
+    private void HandleRoll()
+    {
+        if (!Input.GetKeyDown(KeyCode.Q)) return;
+        if (!isGrounded || isCrouching) return;
+        if (rollCooldownTimer > 0f) return;
+
+        // Hvata pravac i rotaciju u trenutku pritiska - ostaju fiksirani tokom celog koluta
+        rollDirection = transform.forward;
+        rollRotation  = rb.rotation;
+
+        isRolling         = true;
+        rollTimer         = rollDuration;
+        rollCooldownTimer = rollCooldown;
+
+        // Smanjujemo collider tokom koluta da karakter može proći ispod niske prepreke
+        col.height = crouchHeight;
+        col.center = new Vector3(0f, crouchCenter, 0f);
+
+        animator.SetTrigger(HashRoll);
     }
 
     private void HandleCrouch()
