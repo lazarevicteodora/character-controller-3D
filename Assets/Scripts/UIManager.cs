@@ -25,7 +25,7 @@ public class UIManager : MonoBehaviour
     private void UpdateSpeedDisplay()
     {
         if (speedText == null) return;
-        speedText.text = $"Brzina: {player.CurrentSpeed:F1} m/s";
+        speedText.text = $"Speed: {player.CurrentSpeed:F1} m/s";
     }
 
     private void UpdateModifierDisplay()

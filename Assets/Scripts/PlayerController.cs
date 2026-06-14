@@ -34,7 +34,9 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private AudioClip[] footstepSounds;
     [SerializeField] private float footstepInterval = 0.4f;
     [SerializeField] private AudioClip[] jumpSounds;
+    [SerializeField] private AudioClip[] landSounds;
     [SerializeField] private AudioClip[] hurtSounds;
+    [SerializeField] private AudioSource footstepSource;
 
     private Rigidbody rb;
     private Animator animator;
@@ -42,6 +44,7 @@ public class PlayerController : MonoBehaviour
 
     private Vector3 moveDir;
     private bool isGrounded;
+    private bool wasGrounded;
     private bool isCrouching;
     private bool isRecovering;
     private float recoveryTimer;
@@ -142,10 +145,19 @@ public class PlayerController : MonoBehaviour
         {
             jumpCooldownTimer -= Time.deltaTime;
             isGrounded = false;
+            wasGrounded = false;
             return;
         }
-        // Raycast pravo nadole je precizniji od CheckSphere - ne hvata zidove sa strane
+
+        wasGrounded = isGrounded;
         isGrounded = Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, 0.25f, groundLayer);
+
+        // Detektujemo trenutak dočekivanja - kada smo bili u vazduhu a sada smo na tlu
+        if (isGrounded && !wasGrounded)
+        {
+            if (landSounds != null && landSounds.Length > 0 && SoundManager.instance != null)
+                SoundManager.instance.PlaySoundFX(landSounds, 1f);
+        }
     }
 
     private void GatherInput()
@@ -247,21 +259,26 @@ public class PlayerController : MonoBehaviour
 
     private void HandleFootstepAudio()
     {
+        if (footstepSource == null || footstepSounds == null || footstepSounds.Length == 0) return;
+
         if (CurrentSpeed > 0.1f && isGrounded)
         {
             footstepTimer += Time.deltaTime;
-            // Korak zvuci su češći na većoj brzini
             float interval = footstepInterval / Mathf.Max(speedMultiplier, 0.1f);
             if (footstepTimer >= interval)
             {
                 footstepTimer = 0f;
-                if (footstepSounds != null && footstepSounds.Length > 0 && SoundManager.instance != null)
-                    SoundManager.instance.PlaySoundFX(footstepSounds, 0.7f);
+                int index = Random.Range(0, footstepSounds.Length);
+                footstepSource.clip = footstepSounds[index];
+                footstepSource.Play();
             }
         }
         else
         {
             footstepTimer = 0f;
+            // Zaustavljamo korak zvuk čim karakter stane
+            if (footstepSource.isPlaying)
+                footstepSource.Stop();
         }
     }
 
